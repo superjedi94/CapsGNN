@@ -27,7 +27,8 @@ class CapsGNN(torch.nn.Module):
         self.args = args
         self.number_of_features = number_of_features
         self.number_of_targets = number_of_targets
-        self.device = torch.device("cuda" if torch.cuda.is_available() else torch.device("cpu"))
+        # self.device = torch.device("cuda" if torch.cuda.is_available() else torch.device("cpu"))
+        self.device = torch.device("cpu")
         self._setup_layers()
 
 
@@ -116,7 +117,7 @@ class CapsGNN(torch.nn.Module):
         _, v_max_index = v_mag.max(dim=0)
         v_max_index = v_max_index.data
 
-        capsule_masked = torch.autograd.Variable(torch.zeros(capsule_input.size())).to('cuda:0')
+        capsule_masked = torch.autograd.Variable(torch.zeros(capsule_input.size())).to(self.device)
         capsule_masked[v_max_index, :] = capsule_input[v_max_index, :]
         capsule_masked = capsule_masked.view(1, -1)
 
@@ -173,7 +174,8 @@ class CapsGNNTrainer(object):
         :param args: Arguments object.
         """
         self.args = args
-        self.device = torch.device("cuda" if torch.cuda.is_available() else torch.device("cpu"))
+        # self.device = torch.device("cuda" if torch.cuda.is_available() else torch.device("cpu"))
+        self.device = torch.device("cpu")
         self.setup_model()
         
     def enumerate_unique_labels_and_targets(self):
