@@ -141,9 +141,9 @@ class CapsGNN(torch.nn.Module):
         for layer in self.base_layers:
             features = torch.nn.functional.relu(layer(features, edges))
             hidden_representations.append(features)
-
+        
         hidden_representations = torch.cat(tuple(hidden_representations))
-        hidden_representations = hidden_representations.view(1, self.args.gcn_layers, self.args.gcn_filters, -1)
+        hidden_representations = hidden_representations.view(-1, self.args.gcn_layers, self.args.gcn_filters, )
         first_capsule_output = self.first_capsule(hidden_representations)
         first_capsule_output = first_capsule_output.view(-1, self.args.gcn_layers*self.args.capsule_dimensions)
         rescaled_capsule_output = self.attention(first_capsule_output)
@@ -179,7 +179,6 @@ class CapsGNNTrainer(object):
         """
         print("\nEnumerating feature and target values.\n")
         ending = "*.json"
-
         self.train_graph_paths = glob.glob(self.args.train_graph_folder+ending)
         self.test_graph_paths = glob.glob(self.args.test_graph_folder+ending)
         graph_paths = self.train_graph_paths + self.test_graph_paths
@@ -291,6 +290,7 @@ class CapsGNNTrainer(object):
                 for path in batch:
                     data = self.create_input_data(path)
                     prediction, reconstruction_loss = self.model(data)
+                    #print(prediction, data["target"], reconstruction_loss)
                     loss = margin_loss(prediction,
                                        data["target"],
                                        self.args.lambd)

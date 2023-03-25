@@ -58,10 +58,9 @@ class PrimaryCapsuleLayer(torch.nn.Module):
         for i in range(self.num_units):
             unit = torch.nn.Conv1d(in_channels=in_channels,
                                    out_channels=capsule_dimensions,
-                                   kernel_size=(in_units, 1),
+                                   kernel_size=in_units,
                                    stride=1,
                                    bias=True)
-
             self.add_module("unit_" + str(i), unit)
             self.units.append(unit)
 
@@ -141,8 +140,9 @@ class SecondaryCapsuleLayer(torch.nn.Module):
             v_j1 = torch.cat([v_j] * self.in_channels, dim=1)
             u_vj1 = torch.matmul(u_hat.transpose(3, 4), v_j1).squeeze(4).mean(dim=0, keepdim=True)
             b_ij = b_ij + u_vj1
-            # b_max = torch.max(b_ij, dim = 2, keepdim = True)
-            # b_ij = b_ij / b_max.values ## values can be zero so loss would be nan
+            b_max = torch.max(b_ij, dim = 2, keepdim = True)
+            b_ij = b_ij / b_max.values ## values can be zero so loss would be nan
+            
         return v_j.squeeze(1)
 
 class Attention(torch.nn.Module):
