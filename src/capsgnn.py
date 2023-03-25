@@ -27,7 +27,9 @@ class CapsGNN(torch.nn.Module):
         self.args = args
         self.number_of_features = number_of_features
         self.number_of_targets = number_of_targets
+        self.device = torch.device("cuda" if torch.cuda.is_available() else torch.device("cpu"))
         self._setup_layers()
+
 
     def _setup_base_layers(self):
         """
@@ -36,7 +38,7 @@ class CapsGNN(torch.nn.Module):
         self.base_layers = [GCNConv(self.number_of_features, self.args.gcn_filters)]
         for _ in range(self.args.gcn_layers-1):
             self.base_layers.append(GCNConv(self.args.gcn_filters, self.args.gcn_filters))
-        self.base_layers = ListModule(*self.base_layers)
+        self.base_layers = ListModule(*self.base_layers).to(self.device)
 
     def _setup_primary_capsules(self):
         """
@@ -45,14 +47,14 @@ class CapsGNN(torch.nn.Module):
         self.first_capsule = PrimaryCapsuleLayer(in_units=self.args.gcn_filters,
                                                  in_channels=self.args.gcn_layers,
                                                  num_units=self.args.gcn_layers,
-                                                 capsule_dimensions=self.args.capsule_dimensions)
+                                               capsule_dimensions=self.args.capsule_dimensions).to(self.device)
 
     def _setup_attention(self):
         """
         Creating attention layer.
         """
         self.attention = Attention(self.args.gcn_layers*self.args.capsule_dimensions,
-                                   self.args.inner_attention_dimension)
+                                   self.args.inner_attention_dimension).to(self.device)
 
     def _setup_graph_capsules(self):
         """
@@ -61,7 +63,7 @@ class CapsGNN(torch.nn.Module):
         self.graph_capsule = SecondaryCapsuleLayer(self.args.gcn_layers,
                                                    self.args.capsule_dimensions,
                                                    self.args.number_of_capsules,
-                                                   self.args.capsule_dimensions)
+                                                   self.args.capsule_dimensions).to(self.device)
 
     def _setup_class_capsule(self):
         """
@@ -70,7 +72,7 @@ class CapsGNN(torch.nn.Module):
         self.class_capsule = SecondaryCapsuleLayer(self.args.capsule_dimensions,
                                                    self.args.number_of_capsules,
                                                    self.number_of_targets,
-                                                   self.args.capsule_dimensions)
+                                                   self.args.capsule_dimensions).to(self.device)
 
     def _setup_reconstruction_layers(self):
         """
@@ -114,7 +116,7 @@ class CapsGNN(torch.nn.Module):
         _, v_max_index = v_mag.max(dim=0)
         v_max_index = v_max_index.data
 
-        capsule_masked = torch.autograd.Variable(torch.zeros(capsule_input.size()))
+        capsule_masked = torch.autograd.Variable(torch.zeros(capsule_input.size())).to('cuda:0')
         capsule_masked[v_max_index, :] = capsule_input[v_max_index, :]
         capsule_masked = capsule_masked.view(1, -1)
 
@@ -134,15 +136,15 @@ class CapsGNN(torch.nn.Module):
         :param data: Dictionary of tensors with features and edges.
         :return class_capsule_output: Class capsule outputs.
         """
-        features = data["features"]
-        edges = data["edges"]
+        features = data["features"].to(self.device)
+        edges = data["edges"].to(self.device)
         hidden_representations = []
 
         for layer in self.base_layers:
             features = torch.nn.functional.relu(layer(features, edges))
             hidden_representations.append(features)
         
-        hidden_representations = torch.cat(tuple(hidden_representations))
+        hidden_representations = torch.cat(tuple(hidden_representations)).to(self.device)
         hidden_representations = hidden_representations.view(-1, self.args.gcn_layers, self.args.gcn_filters, )
         first_capsule_output = self.first_capsule(hidden_representations)
         first_capsule_output = first_capsule_output.view(-1, self.args.gcn_layers*self.args.capsule_dimensions)
@@ -171,8 +173,9 @@ class CapsGNNTrainer(object):
         :param args: Arguments object.
         """
         self.args = args
+        self.device = torch.device("cuda" if torch.cuda.is_available() else torch.device("cpu"))
         self.setup_model()
-
+        
     def enumerate_unique_labels_and_targets(self):
         """
         Enumerating the features and targets in order to setup weights later.
@@ -201,7 +204,7 @@ class CapsGNNTrainer(object):
         Enumerating labels and initializing a CapsGNN.
         """
         self.enumerate_unique_labels_and_targets()
-        self.model = CapsGNN(self.args, self.number_of_features, self.number_of_targets)
+        self.model = CapsGNN(self.args, self.number_of_features, self.number_of_targets).to(self.device)
 
     def create_batches(self):
         """
@@ -230,7 +233,7 @@ class CapsGNNTrainer(object):
         :param data: Data dictionary.
         :return : Target vector.
         """
-        return  torch.FloatTensor([0.0 if i != data["target"] else 1.0 for i in range(self.number_of_targets)])
+        return  torch.FloatTensor([0.0 if i != data["target"] else 1.0 for i in range(self.number_of_targets)]).to(self.device)
 
     def create_edges(self, data):
         """
@@ -240,7 +243,7 @@ class CapsGNNTrainer(object):
         """
         edges = [[edge[0], edge[1]] for edge in data["edges"]]
         edges = edges + [[edge[1], edge[0]] for edge in data["edges"]]
-        return torch.t(torch.LongTensor(edges))
+        return torch.t(torch.LongTensor(edges)).to(self.device)
 
     def create_features(self, data):
         """
@@ -252,7 +255,7 @@ class CapsGNNTrainer(object):
         node_indices = [node for node in range(len(data["labels"]))]
         feature_indices = [self.feature_map[label] for label in data["labels"].values()]
         features[node_indices, feature_indices] = 1.0
-        features = torch.FloatTensor(features)
+        features = torch.FloatTensor(features).to(self.device)
         return features
 
     def create_input_data(self, path):
@@ -262,9 +265,9 @@ class CapsGNNTrainer(object):
         :return to_pass_forward: Data dictionary.
         """
         data = json.load(open(path))
-        target = self.create_target(data)
-        edges = self.create_edges(data)
-        features = self.create_features(data)
+        target = self.create_target(data).to(self.device)
+        edges = self.create_edges(data).to(self.device)
+        features = self.create_features(data).to(self.device)
         to_pass_forward = self.create_data_dictionary(target, edges, features)
         return to_pass_forward
 
@@ -310,7 +313,7 @@ class CapsGNNTrainer(object):
         print("\n\nScoring.\n")
         self.model.eval()
         self.predictions = []
-        self.hits = []
+        self.targets = []
         for path in tqdm(self.test_graph_paths):
             data = self.create_input_data(path)
             prediction, _ = self.model(data)
@@ -318,9 +321,8 @@ class CapsGNNTrainer(object):
             _, prediction_max_index = prediction_mag.max(dim=1)
             prediction = prediction_max_index.data.view(-1).item()
             self.predictions.append(prediction)
-            self.hits.append(data["target"][prediction] == 1.0)
-
-        print("\nAccuracy: " + str(round(np.mean(self.hits), 4)))
+            self.targets.append(int(data["target"].detach().cpu().numpy().max()))
+        print("\nAccuracy: " + str((np.array(self.predictions) == np.array(self.targets)).sum()/len(self.targets)))
 
     def save_predictions(self):
         """

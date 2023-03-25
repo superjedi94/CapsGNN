@@ -128,15 +128,15 @@ class SecondaryCapsuleLayer(torch.nn.Module):
         x = torch.stack([x] * self.num_units, dim=2).unsqueeze(4)
         W = torch.cat([self.W] * batch_size, dim=0)
         u_hat = torch.matmul(W, x)
-        b_ij = Variable(torch.zeros(1, self.in_channels, self.num_units, 1))
+        b_ij = Variable(torch.zeros(1, self.in_channels, self.num_units, 1)).to('cuda:0')
 
         num_iterations = 3
 
         for _ in range(num_iterations):
             c_ij = torch.nn.functional.softmax(b_ij, dim=2)
             c_ij = torch.cat([c_ij] * batch_size, dim=0).unsqueeze(4)
-            s_j = (c_ij * u_hat).sum(dim=1, keepdim=True)
-            v_j = SecondaryCapsuleLayer.squash(s_j)
+            s_j = torch.sum(c_ij * u_hat, dim=1, keepdim=True)
+            v_j = SecondaryCapsuleLayer.squash(s_j).to('cuda:0')
             v_j1 = torch.cat([v_j] * self.in_channels, dim=1)
             u_vj1 = torch.matmul(u_hat.transpose(3, 4), v_j1).squeeze(4).mean(dim=0, keepdim=True)
             b_ij = b_ij + u_vj1
@@ -183,12 +183,12 @@ def margin_loss(scores, target, loss_lambda):
     """
     scores = scores.squeeze()
     v_mag = torch.sqrt((scores**2).sum(dim=1, keepdim=True))
-    zero = Variable(torch.zeros(1))
+    zero = Variable(torch.zeros(1)).to('cuda:0')
     m_plus = 0.9
     m_minus = 0.1
     max_l = torch.max(m_plus - v_mag, zero).view(1, -1)**2
     max_r = torch.max(v_mag - m_minus, zero).view(1, -1)**2
-    T_c = Variable(torch.zeros(v_mag.shape))
+    T_c = Variable(torch.zeros(v_mag.shape)).to('cuda:0')
     T_c = target
     L_c = T_c * max_l + loss_lambda * (1.0 - T_c) * max_r
     L_c = L_c.sum(dim=1)

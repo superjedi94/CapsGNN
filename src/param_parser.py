@@ -76,5 +76,10 @@ def parameter_parser():
                         type=float,
                         default=0.1,
 	                help="Reconstruction loss weight. Default is 0.1.")
+    parser.add_argument("--device",
+                    type=int,
+                    default=0,
+                help="Device")
+
 
     return parser.parse_args()
