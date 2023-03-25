@@ -321,8 +321,11 @@ class CapsGNNTrainer(object):
             _, prediction_max_index = prediction_mag.max(dim=1)
             prediction = prediction_max_index.data.view(-1).item()
             self.predictions.append(prediction)
-            self.targets.append(int(data["target"].detach().cpu().numpy().max()))
-        print("\nAccuracy: " + str((np.array(self.predictions) == np.array(self.targets)).sum()/len(self.targets)))
+            self.targets.append(data["target"].detach().cpu().numpy())
+        truth = np.argmax(np.array(self.targets), axis=1)
+        print(self.predictions, self.targets)
+        print("\nAccuracy: " + str((np.array(self.predictions) == truth).sum()/len(self.targets)))
+        
 
     def save_predictions(self):
         """
